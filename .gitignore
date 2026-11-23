@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+runs/
+*.npz
+*.npy
+*.pt
+*.h5
+.venv*/
+.ipynb_checkpoints/
+# data and third-party files are not part of this repository
+KU_Leuven_original/
+third_party/
