@@ -73,6 +73,7 @@
 |---|---|
 | `3DAR_EV_FaultBandNet.ipynb` | 주 모델 3×3 (이 README의 결과) |
 | `sub/3DAR_EV_FaultBandNet_3x1.ipynb` | 서브: 3×1 (위치별 고장 여부만), 비교용 |
+| `코드_설명.md` | 주 노트북의 설정값·함수·분할 방식 설명 (노트북에서 뺀 주석) |
 | `figures/` | 모델·학습 구조도와 결과 그림 |
 | `CLAUDE.md` | Claude Code 작업 지침 |
 | `CONTINUE_ON_PC.md` | 개인 컴퓨터(VS Code)에서 이어서 하기 (설치, 데이터, 첫 프롬프트) |
