@@ -31,26 +31,26 @@ text(W / 2, 40, 'FaultBandNet — training and evaluation', 26, True)
 text(W / 2, 70, 'each tested recording is predicted only by models that never heard any of its 3 source files', 15, color='#555')
 
 # ---- data and labels (left column)
-box(30, 110, 300, 110, '#F8D3D7', [('Data: 664 recordings', 15, True), '1,200 minus any with Imbalance / Modulation', 'fault count 0/1/2/3: 300 / 171 / 110 / 83', 'input = 3 maps (Wind, PWM, Whine)'])
+box(30, 110, 300, 110, '#F8D3D7', [('Data: all 1,200 recordings', 15, True), 'Imbalance / Modulation → healthy (out of band)', 'Whine/PWM/Wind count 0/1/2/3: 479/394/244/83', 'input = 3 maps (Wind, PWM, Whine)'])
 arrow(180, 220, 180, 260)
 box(30, 260, 300, 150, '#FFF4D6', [('Label: 3 × 3 (position × fault)', 15, True), '1 if that speaker plays', 'Whine / PWM / Wind, else 0',
     'e.g. rear = PWM → [0 0 0 / 0 1 0 / 0 0 0]', '3x1 variant: max over types → [0 / 1 / 0]'])
 arrow(330, 165, 420, 165)
 
 # ---- split
-box(420, 110, 380, 110, '#E5E1F5', [('Source-disjoint split, 30 repeats', 15, True), 'pick 90 original KU Leuven files = set T', 'test = all 3 source files in T', 'train pool = no source file in T (rest unused)'])
+box(420, 110, 380, 110, '#E5E1F5', [('Source-disjoint split, 30 repeats', 15, True), 'test: ~5.3 % of each fault count, all 3 sources in T', 'train pool: no source file in T', 'same share kept for each fault count (rest unused)'])
 fx, fy, fw = 440, 245, 66
 for k in range(5):
     S.append(f'<rect x="{fx + k * (fw + 4)}" y="{fy}" width="{fw}" height="34" fill="{"#F8C4C4" if k == 0 else ("#EEEEEE" if k == 4 else "#C9E6F7")}" stroke="#555"/>')
     text(fx + k * (fw + 4) + fw / 2, fy + 22, ['test', 'train', 'train', 'train', 'unused'][k], 13, k == 0)
-text(610, fy + 54, 'per repeat: train pool 386–455, test 31–41 recordings', 12, color='#555')
+text(610, fy + 54, 'per repeat: train 329–493 (mean 419), validation ~74, test 63', 12, color='#555')
 arrow(560, 300, 560, 340)
-box(420, 340, 380, 70, '#E5E1F5', [('train pool → 85 % train / 15 % validation', 14, True), 'validation only for early stopping'])
+box(420, 340, 380, 70, '#E5E1F5', [('train pool → 85 % train / 15 % validation', 14, True), 'per fault count; validation only for early stopping'])
 
 # ---- training loop
 arrow(610, 410, 610, 450)
 S.append('<rect x="380" y="450" width="830" height="380" rx="16" fill="#F4F9FD" stroke="#7aa6c2" stroke-width="1.6" stroke-dasharray="8 5"/>')
-text(395, 475, 'repeated for each of 30 splits (and for 3x3 and 3x1 heads)', 14, True, '#2f5f80', 'start')
+text(395, 475, 'repeated for each of 30 splits', 14, True, '#2f5f80', 'start')
 box(410, 495, 230, 90, '#FFF', [('Normalise inputs', 14, True), 'mean / std from', 'training recordings only'])
 arrow(640, 540, 690, 540)
 box(690, 495, 230, 90, '#C9E6F7', [('Mini-batch (32)', 14, True), '3 maps → FaultBandNet', '→ 3 × 3 logits'])
@@ -68,7 +68,7 @@ arrow(525, 705, 525, 745)
 box(410, 745, 300, 60, '#F8C4C4', [('predict the test set', 14, True), 'with the best-epoch weights'])
 text(1195, 820, 'GPU throttled to ~50 % (Spark heat limit)', 12, color='#555', anchor='end')
 arrow(710, 775, 1260, 775)
-box(1260, 715, 410, 120, '#FFF4D6', [('Test probabilities', 15, True), 'averaged over the repeats a recording was tested', '643 of 664 recordings tested (1.6 times on average)', 'test_probabilities_3x3.npy / _3x1.npy'])
+box(1260, 715, 410, 120, '#FFF4D6', [('Test probabilities', 15, True), 'averaged over the repeats a recording was tested', '1,158 of 1,200 recordings tested', 'test_probabilities_3x3.npy / _3x1.npy'])
 arrow(1465, 715, 1465, 665)
 box(1260, 415, 410, 250, '#FAFAFA', [('Evaluation (threshold 0.5, fixed)', 15, True),
     'per recording: has fault X? → detection rate,', 'false alarms on healthy 11/09, healthy 11/02,', 'and on other-fault recordings',

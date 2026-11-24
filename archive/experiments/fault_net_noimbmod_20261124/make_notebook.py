@@ -24,11 +24,11 @@ MD = """# 3DAR_EV FaultBandNet — 고장 대역 × 마이크 각도 지도로 �
   - 각도는 360° 전부, 주파수는 0–24 kHz 중 약 13 %만 사용
 - 모델: 지도별 2D CNN → 각도 방향 1D CNN(원형) → FC → **3×3 = 위치 3(앞/뒤/오른쪽) × 고장 3(Whine/PWM/Wind) 확률**
   (위치별 고장 여부만 내는 3×1 변형은 서브 노트북 `sub/3DAR_EV_FaultBandNet_3x1.ipynb`)
-- 데이터: 3스피커 녹음 1,200개 중 **Imbalance·Modulation이 하나라도 들어간 녹음 제외 → 664개**
-  (두 고장은 녹음에서 성분이 사라져 녹음 조건만 배움)
-- 평가: **원본 음원 비중복 반복 분할 30회**. 매번 원본 파일 90개를 시험용으로 떼고,
-  시험 = 세 스피커 원본이 모두 그 안에 있는 녹음, 학습 = 그 파일이 하나도 없는 녹음.
-  어떤 스피커의 원본 파일도 학습과 시험에 겹치지 않는다. 녹음별로 시험된 회차의 확률을 평균.
+- 데이터: 3스피커 녹음 **1,200개 전부**. Imbalance(1·2차, 0.3 kHz 미만)·Modulation(약 8차, 1.1 kHz 미만)은 지도 대역 밖이라
+  **정상(0)으로 학습·평가**한다. 즉 정답은 "그 위치에 Whine/PWM/Wind가 있나"이고, 고장 개수도 이 세 고장만 센다.
+- 평가: **원본 음원 비중복 반복 분할 30회, 고장 개수(0/1/2/3곳)별 같은 비율**.
+  시험 = 고장 개수마다 약 5.3 %, 학습 = 시험 원본 파일이 하나도 없는 녹음에서 고장 개수마다 같은 비율만 남김,
+  검증 = 학습 풀에서 고장 개수마다 15 %. 어떤 스피커의 원본 파일도 학습과 시험에 겹치지 않는다. 녹음별로 시험된 회차의 확률을 평균.
   (이전 버전의 5-fold는 오른쪽 스피커만 묶어서 시험 녹음의 98 %가 앞·뒤 원본을 학습과 공유했음)
 
 셀 구성(펭귄 노트북과 같은 순서): **셀 1** 설정·데이터·특징·모델·학습 → **셀 2** 평가·요약 → **셀 3–4** 그림.
@@ -37,14 +37,15 @@ MD = """# 3DAR_EV FaultBandNet — 고장 대역 × 마이크 각도 지도로 �
 
 C1 = OLD.CELL1
 C1 = sub(C1, "    'out_dir': 'runs/nb_faultbandnet_20261124',                            # 이 노트북의 모든 결과\n",
-         "    'out_dir': '@PRE@runs/nb_faultbandnet_strict_20261124',                     # 이 노트북의 모든 결과\n"
+         "    'out_dir': '@PRE@runs/nb_faultbandnet_all_20261124',                       # 이 노트북의 모든 결과\n"
          "    'feature_cache_dir': '@PRE@runs/nb_faultbandnet_20261124',                  # 특징 캐시(녹음 1,200개) 재사용\n")
 C1 = sub(C1, "    'folds': 5, 'validation_fraction': 0.15, 'seed_base': 100,\n",
-         "    'exclude_classes': ['Imbalance', 'Modulation'],                                 # 하나라도 들어간 녹음 제외\n"
+         "    'exclude_classes': [],                                                          # 뺄 녹음 없음 (1,200개 전부)\n"
+         "    'healthy_like': ['Imbalance', 'Modulation'],                                    # 지도 대역 밖 → 정상(0)으로 학습·평가\n"
          "    'output_mode': '@MODE@',                                                         # 3x3: 위치×고장종류, 3x1: 위치×고장여부\n"
-         "    'repeats': 30, 'test_files_per_repeat': 90, 'split_seed': 0,                    # 원본 음원 비중복 반복 분할\n"
+         "    'repeats': 30, 'test_rate': 0.053, 'split_seed': 0,                             # 원본 음원 비중복 반복 분할, 고장 개수별 같은 비율\n"
          "    'validation_fraction': 0.15, 'seed_base': 1000,\n")
-C1 = sub(C1, "from sklearn.model_selection import GroupKFold, GroupShuffleSplit", "from sklearn.model_selection import GroupShuffleSplit")
+C1 = sub(C1, "from sklearn.model_selection import GroupKFold, GroupShuffleSplit\n", "")
 C1 = sub(C1, "    cache = OUT / f'features_{key}.npz'", "    cache = Path(CONFIG['feature_cache_dir']) / f'features_{key}.npz'; cache.parent.mkdir(parents=True, exist_ok=True)")
 C1 = sub(C1, "# 4. Labels (위치 3 × 고장 3) — Imbalance/Modulation 스피커는 0",
          "# 4. Labels — 3x3: (위치 3 × 고장 3), 3x1: (위치 3 × 고장 여부 1)")
@@ -86,20 +87,31 @@ C1 = C1[:C1.index("# ==========================================\n# 8. Multi-Fold
 # 8. 원본 음원 비중복 반복 분할
 # ==========================================
 def make_repeats(records):
-    """원본 파일(세 스피커 모두)을 기준으로 분할. 완전한 k-fold는 불가능(정상 원본이 최대 12번, 여러 위치에 재사용).
-    매 회차: 아직 덜 시험된 녹음부터 그 원본 파일을 시험 집합 T에 넣어 파일 수가 test_files_per_repeat가 될 때까지 키움.
-    시험 = 세 원본이 모두 T 안, 학습 풀 = T의 파일이 하나도 없는 녹음, 나머지는 그 회차에 쓰지 않음."""
+    """원본 파일(세 스피커 모두) 기준 분할 + 고장 개수(0/1/2/3곳)별 같은 비율.
+    완전한 k-fold는 불가능(정상 원본이 최대 12번, 여러 위치에 재사용). 매 회차:
+    (1) 시험: 고장 개수마다 할당량 = round(test_rate × 그 개수의 녹음 수). 덜 시험된 녹음부터 그 원본 파일을 시험 집합 T에
+        넣되, 세 원본이 모두 T 안인 녹음(=시험) 수가 할당량을 넘지 않을 때만 넣는다.
+    (2) 학습 풀: T의 파일이 하나도 없는 녹음. 고장 개수마다 남은 비율이 다르므로 가장 작은 비율에 맞춰 무작위로 덜어낸다.
+    (3) 검증: 학습 풀에서 고장 개수마다 validation_fraction씩 뗀다."""
     files = sorted({x for r in records for x in r['source_files']}); fi = {f: i for i, f in enumerate(files)}
     E = np.array([[fi[x] for x in r['source_files']] for r in records]); n = len(records)
+    fc = FC; nf = np.bincount(fc, minlength=4); quota = np.round(CONFIG['test_rate'] * nf).astype(int)
     rng = np.random.default_rng(CONFIG['split_seed']); tested = np.zeros(n, int); reps = []
     for rep in range(CONFIG['repeats']):
-        inT = np.zeros(len(files), bool); w = 1.0 / (1 + tested) ** 2
+        inT = np.zeros(len(files), bool); w = 1.0 / (1 + tested) ** 2; cnt = np.zeros(4, int)
         for e in rng.choice(n, n, replace=False, p=w / w.sum()):
-            if inT.sum() >= CONFIG['test_files_per_repeat']: break
-            inT[E[e]] = True
-        te = np.where(inT[E].all(1))[0]; tr = np.where(~inT[E].any(1))[0]
-        assert not (set(E[te].ravel()) & set(E[tr].ravel()))                    # 원본 파일 겹침 0
-        tested[te] += 1; reps.append(dict(repeat=rep, train_pool=tr, test=te))
+            if (cnt >= quota).all(): break
+            if cnt[fc[e]] >= quota[fc[e]] or inT[E[e]].all(): continue
+            t2 = inT.copy(); t2[E[e]] = True; c2 = np.bincount(fc[t2[E].all(1)], minlength=4)
+            if (c2 <= quota).all(): inT, cnt = t2, c2
+        te = np.where(inT[E].all(1))[0]; pool = np.where(~inT[E].any(1))[0]
+        assert not (set(E[te].ravel()) & set(E[pool].ravel()))                  # 원본 파일 겹침 0
+        frac = (np.bincount(fc[pool], minlength=4) / nf).min(); keep = np.floor(frac * nf).astype(int)
+        tr, va = [], []
+        for q in range(4):
+            sel = rng.permutation(rng.choice(pool[fc[pool] == q], keep[q], replace=False)); nv = int(round(CONFIG['validation_fraction'] * keep[q]))
+            va.append(sel[:nv]); tr.append(sel[nv:])
+        tested[te] += 1; reps.append(dict(repeat=rep, train=np.sort(np.concatenate(tr)), validation=np.sort(np.concatenate(va)), test=te))
     return reps
 
 # ==========================================
@@ -109,27 +121,27 @@ print('Reading dataset (read-only):', CONFIG['data_root'], flush=True)
 ALL = discover(CONFIG['data_root']); X_ALL = build_features(ALL)
 keep = np.array([not (set(r['classes']) & set(CONFIG['exclude_classes'])) for r in ALL])
 RECORDS = [r for r, k in zip(ALL, keep) if k]; X = [x[keep] for x in X_ALL]; N = len(RECORDS)
-Y3 = make_labels(RECORDS); FC = np.array([r['fault_count'] for r in RECORDS]); DATE = np.array([r['date'] for r in RECORDS])
-GROUP = np.array([r['source_files'][2] for r in RECORDS])                    # 검증 분할용(오른쪽 원본)
-print(f'Recordings: {len(ALL)} → {N} without {CONFIG["exclude_classes"]} | by fault count {np.bincount(FC).tolist()} '
+Y3 = make_labels(RECORDS); DATE = np.array([r['date'] for r in RECORDS])
+FC = Y3.max(2).sum(1).astype(int)                                            # 고장 개수 = Whine/PWM/Wind 스피커 수 (Imbalance·Modulation은 정상 취급)
+KIND0 = np.array(['Imb/Mod only' if f == 0 and set(r['classes']) & set(CONFIG['healthy_like']) else f'healthy {d}' for f, r, d in zip(FC, RECORDS, DATE)])
+print(f'Recordings: {N} | Whine/PWM/Wind count 0/1/2/3: {np.bincount(FC).tolist()} | count-0 kinds {dict(zip(*np.unique(KIND0[FC == 0], return_counts=True)))} '
       f'| fault speakers {dict(zip(TY, Y3.sum((0, 1)).astype(int).tolist()))}')
 
 REPEATS = make_repeats(RECORDS)
 COUNT = np.zeros(N); [np.add.at(COUNT, r['test'], 1) for r in REPEATS]; TESTED = np.where(COUNT > 0)[0]
-print(f'{len(REPEATS)} repeats | train pool {min(len(r["train_pool"]) for r in REPEATS)}–{max(len(r["train_pool"]) for r in REPEATS)} '
+print(f'{len(REPEATS)} repeats | train {min(len(r["train"]) for r in REPEATS)}–{max(len(r["train"]) for r in REPEATS)} '
       f'| test {min(len(r["test"]) for r in REPEATS)}–{max(len(r["test"]) for r in REPEATS)} | tested at least once: {len(TESTED)}/{N}')
-write_json(OUT / 'repeats.json', [dict(repeat=r['repeat'], train_pool=[RECORDS[i]['uid'] for i in r['train_pool']],
-                                       test=[RECORDS[i]['uid'] for i in r['test']]) for r in REPEATS])
+for q in range(4): print(f'  {q} fault: train / val / test per repeat (mean) = ' + ' / '.join(f"{np.mean([(FC[r[k]] == q).sum() for r in REPEATS]):.1f}" for k in ('train', 'validation', 'test')) + f'  of {(FC == q).sum()}')
+write_json(OUT / 'repeats.json', [{'repeat': r['repeat'], **{k: [RECORDS[i]['uid'] for i in r[k]] for k in ('train', 'validation', 'test')}} for r in REPEATS])
 
 MODE = CONFIG['output_mode']; Y = labels_for(MODE, Y3)
 if CONFIG['train']:
     if CONFIG['device'] == 'cuda' and not torch.cuda.is_available(): raise RuntimeError('CUDA unavailable.')
     S = np.zeros(Y.shape); REP_PROBS = []
     for r in REPEATS:
-        tp, te = r['train_pool'], r['test']; run_dir = OUT / MODE / f"repeat{r['repeat']:02d}"; run_dir.mkdir(parents=True, exist_ok=True)
-        a, b = next(GroupShuffleSplit(1, test_size=CONFIG['validation_fraction'], random_state=r['repeat']).split(tp, groups=GROUP[tp]))
-        print(f"[{MODE} repeat {r['repeat']}] train {len(a)} / val {len(b)} / test {len(te)}", flush=True)
-        predict = train_fold(X, Y, tp[a], tp[b], CONFIG['seed_base'] + r['repeat'], run_dir)
+        tr, va, te = r['train'], r['validation'], r['test']; run_dir = OUT / MODE / f"repeat{r['repeat']:02d}"; run_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[{MODE} repeat {r['repeat']}] train {len(tr)} / val {len(va)} / test {len(te)}", flush=True)
+        predict = train_fold(X, Y, tr, va, CONFIG['seed_base'] + r['repeat'], run_dir)
         p = predict(te); S[te] += p; REP_PROBS.append(p)
     PROBS = (S / np.maximum(COUNT, 1)[:, None, None]).astype(np.float32)
     np.save(OUT / f'test_probabilities_{MODE}.npy', PROBS)
@@ -149,7 +161,7 @@ rows = []
 for i in T:
     r = RECORDS[i]
     for p, pos in enumerate(POS):
-        row = dict(recording_id=r['uid'], date=r['date'], fault_count=r['fault_count'], times_tested=int(COUNT[i]), position=pos, gt_class=r['classes'][p])
+        row = dict(recording_id=r['uid'], date=r['date'], fault_count=int(FC[i]), times_tested=int(COUNT[i]), position=pos, gt_class=r['classes'][p])
         if MODE == '3x3':
             row.update({f'prob_{c}': round(float(PROBS[i, p, j]), 4) for j, c in enumerate(TY)})
             row['predicted'] = next((TY[j] for j in np.argsort(-PROBS[i, p]) if PROBS[i, p, j] >= THR), 'Healthy')
@@ -159,7 +171,7 @@ for i in T:
 write_csv(OUT / f'test_predictions_{MODE}.csv', rows)
 
 # ==========================================
-# 2. 회차별 지표 (회차마다 시험 녹음 31–41개라 흔들림이 큼)
+# 2. 회차별 지표 (회차마다 시험 녹음 35개라 흔들림이 큼)
 # ==========================================
 v = np.array([roc_auc_score(YS[r['test']].ravel(), p.max(2).ravel()) for r, p in zip(REPEATS, REP_PROBS) if 0 < YS[r['test']].mean() < 1])
 print(f'{MODE} sector AUC per repeat: mean {v.mean():.3f} ± {v.std():.3f} (min {v.min():.3f}, max {v.max():.3f}, {len(v)} repeats)')
@@ -168,7 +180,8 @@ print(f'{MODE} sector AUC per repeat: mean {v.mean():.3f} ± {v.std():.3f} (min 
 # 3. Grand Summary
 # ==========================================
 SECTOR = sector_report(PS[T], YS[T], FC[T], DATE[T], THR)
-TYPES = report(PROBS[T], Y3[T], FC[T], DATE[T], THR) if MODE == '3x3' else None
+DATE0 = np.where(KIND0 == 'Imb/Mod only', 'imb-mod', DATE)                  # '정상 11/09·11/02' 오탐에서 Imbalance·Modulation만 있는 녹음은 뺌
+TYPES = report(PROBS[T], Y3[T], FC[T], DATE0[T], THR) if MODE == '3x3' else None
 write_json(OUT / f'summary_{MODE}.json', dict(config=CONFIG, n_tested=int(len(T)), times_tested_mean=float(COUNT[T].mean()), sector=SECTOR, types=TYPES))
 print(f'\n=== {MODE}: 섹터 1개 정상/고장 판별 (시험된 녹음 {len(T)}개, 원본 음원 비중복) ===')
 fr = lambda a, b: f'{a}/{b} = {a / b:.2f}' if b else '-'
@@ -178,7 +191,8 @@ for q in range(4):
     print(f"{q:<12}{s['n_rec']:>6}{fr(s['healthy_correct'], s['healthy_sectors']):>24}{fr(s['fault_correct'], s['fault_sectors']):>22}{s['sector_acc']:>12.2f}{s['all3_correct']:>13.2f}")
 print(f"sector AUC: all {SECTOR['sector_auc_all']:.3f} | within 1-/2-fault rec. {SECTOR['sector_auc_1_2']:.3f}")
 print(f"1-fault rec.: fault sector ranked 1st {SECTOR['fc1_fault_sector_ranked_first']:.3f} (random 0.33)")
-print('all-healthy recordings flagged:', {d: round(x, 2) for d, x in SECTOR['healthy_rec_flagged'].items()})
+flag = PS[T] >= THR; k0 = FC[T] == 0
+print('count-0 recordings flagged (any sector):', {k: f"{int(flag[k0 & (KIND0[T] == k)].any(1).sum())}/{int((k0 & (KIND0[T] == k)).sum())}" for k in sorted(set(KIND0[T][k0]))})
 if MODE == '3x3':
     f2 = lambda x: '  -  ' if x is None else f'{x:.2f}'
     print('\n=== 3x3: 고장 종류별 (녹음 단위) ===')

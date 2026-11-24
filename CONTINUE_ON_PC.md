@@ -32,10 +32,10 @@ pip install -r requirements.txt
 
 ## 3. 실행
 - VS Code(Jupyter 확장)로 `3DAR_EV_FaultBandNet.ipynb`를 열고 셀 1 → 2 → 3 → 4 순서로 실행한다.
-- 주 노트북은 3×3을 30회 반복 학습한다(Spark GPU에서 약 30분). 서브 노트북 `sub/3DAR_EV_FaultBandNet_3x1.ipynb`는 3×1이다.
+- 주 주피터 노트북은 3×3을 30회 반복 학습한다(Spark GPU에서 약 10분). 서브 노트북 `sub/3DAR_EV_FaultBandNet_3x1.ipynb`는 3×1이다.
 - 학습을 건너뛰고 저장된 결과로 평가·그림만 보려면 `CONFIG['train'] = False`(결과 파일이 `runs/`에 있어야 함).
 - GPU가 없으면 `CONFIG['device']`를 바꿔야 한다. 모델이 작아(14.5만 개 파라미터) CPU로도 돌지만 오래 걸린다.
-- 결과는 `runs/nb_faultbandnet_strict_20261124/`에 저장된다(저장소에는 안 올라감). 서브 노트북도 `../runs/`의 같은 폴더를 쓴다.
+- 결과는 `runs/nb_faultbandnet_all_20261124/`에 저장된다(저장소에는 안 올라감). 서브 노트북도 `../runs/`의 같은 폴더를 쓴다.
 
 ## 4. Claude Code에 처음 보낼 프롬프트
 VS Code에서 저장소 폴더를 열고, 터미널(또는 Claude Code 확장)에서 `claude`를 실행해 아래를 붙여 넣는다. `CLAUDE.md`(작업 지침)는 자동으로 읽힌다.
